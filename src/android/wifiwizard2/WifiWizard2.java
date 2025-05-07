@@ -58,8 +58,18 @@ import java.net.Inet4Address;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.HttpURLConnection;
-
+import java.net.SocketException;
+import java.util.Enumeration;
 import java.net.UnknownHostException;
+import java.io.IOException;
+import java.io.File;
+import java.io.FileReader;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import com.stealthcopter.networktools.subnet.Device;
+import com.stealthcopter.networktools.SubnetDevices;
+import java.util.ArrayList;
+
 
 public class WifiWizard2 extends CordovaPlugin {
 
@@ -78,6 +88,7 @@ public class WifiWizard2 extends CordovaPlugin {
   private static final String GET_CONNECTED_BSSID = "getConnectedBSSID";
   private static final String GET_CONNECTED_NETWORKID = "getConnectedNetworkID";
   private static final String IS_WIFI_ENABLED = "isWifiEnabled";
+  private static final String GET_DEVICES_NETWORK = "getDevicesNetwork";
   private static final String SET_WIFI_ENABLED = "setWifiEnabled";
   private static final String SCAN = "scan";
   private static final String ENABLE_NETWORK = "enable";
@@ -88,6 +99,8 @@ public class WifiWizard2 extends CordovaPlugin {
   private static final String REQUEST_FINE_LOCATION = "requestFineLocation";
   private static final String GET_WIFI_IP_ADDRESS = "getWifiIP";
   private static final String GET_WIFI_ROUTER_IP_ADDRESS = "getWifiRouterIP";
+  private static final String GET_LAN_ROUTER_IP_ADDRESS = "getLanRouterIP";
+  private static final String GET_LAN_MAC_ADDRESS = "getLanMacAddress";
   private static final String CAN_PING_WIFI_ROUTER = "canPingWifiRouter";
   private static final String CAN_CONNECT_TO_ROUTER = "canConnectToRouter";
   private static final String CAN_CONNECT_TO_INTERNET = "canConnectToInternet";
@@ -168,12 +181,34 @@ public class WifiWizard2 extends CordovaPlugin {
     if (action.equals(IS_WIFI_ENABLED)) {
       this.isWifiEnabled(callbackContext);
       return true;
+    }
+    else if (action.equals(GET_DEVICES_NETWORK)) {
+      this.getDevicesNetwork(callbackContext);
+      return true;
     } else if (action.equals(SET_WIFI_ENABLED)) {
       this.setWifiEnabled(callbackContext, data);
       return true;
     } else if (action.equals(REQUEST_FINE_LOCATION)) {
       this.requestLocationPermission(LOCATION_REQUEST_CODE);
-      return true;
+      return true;//
+    } else if(action.equals(GET_LAN_MAC_ADDRESS)){
+          String mac = getLanMacAddress();
+          if ( mac == null ) {
+            callbackContext.error("NO_VALID_MAC_ADDRESS");
+            return true;
+          } else {
+            callbackContext.success(mac);
+            return true;
+          }
+    } else if(action.equals(GET_LAN_ROUTER_IP_ADDRESS)){
+        String ip = getLanRouterAddress();
+        if ( ip == null || ip.equals("0.0.0.0")) {
+          callbackContext.error("NO_VALID_ROUTER_IP_FOUND");
+          return true;
+        } else {
+          callbackContext.success(ip);
+          return true;
+        }
     } else if (action.equals(GET_WIFI_ROUTER_IP_ADDRESS)) {
 
       String ip = getWiFiRouterIP();
@@ -1253,6 +1288,31 @@ public class WifiWizard2 extends CordovaPlugin {
     return isEnabled;
   }
 
+  private void getDevicesNetwork(CallbackContext callbackContext){
+        final Context context = cordova.getActivity().getApplicationContext();
+        SubnetDevices subnetDevices = SubnetDevices.fromLocalAddress();
+        subnetDevices.findDevices(new SubnetDevices.OnSubnetDeviceFound() {
+            @Override
+            public void onDeviceFound(Device device) {}
+            @Override
+            public void onFinished(ArrayList<Device> devices) {
+              JSONObject ret = new JSONObject();
+              JSONArray result = new JSONArray();
+              try{
+                for (Device device : devices) {
+                    JSONObject obj = new JSONObject();
+                    obj.put("ip", device.ip);
+                    obj.put("mac", device.mac);
+                    result.put(obj);
+                }
+                ret.put("devices", result);
+              }
+              catch(JSONException e){
+              }
+              callbackContext.success(ret);
+            }
+        });
+}
   /**
    * This method takes a given String, searches the current list of configured WiFi networks, and
    * returns the networkId for the network if the SSID matches. If not, it returns -1.
@@ -1392,6 +1452,61 @@ public class WifiWizard2 extends CordovaPlugin {
     int ip = dhcp.gateway;
     return formatIP(ip);
   }
+
+  private  String getLanRouterAddress() {
+        String filePath = "/proc/net/route";
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String[] parts = line.split("\\s+");
+                if (parts.length > 2 && "00000000".equals(parts[1])) {
+                    return convertHexToIP(parts[2]);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    private static String convertHexToIP(String hex) {
+        try {
+            long ip = Long.parseLong(hex, 16);
+            byte[] bytes = new byte[]{
+                (byte) (ip & 0xFF),
+                (byte) ((ip >> 8) & 0xFF),
+                (byte) ((ip >> 16) & 0xFF),
+                (byte) ((ip >> 24) & 0xFF)
+            };
+            return InetAddress.getByAddress(bytes).getHostAddress();
+        } catch (UnknownHostException | NumberFormatException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+    private  String getLanMacAddress() {
+        File netDir = new File("/sys/class/net/");
+        File[] interfaces = netDir.listFiles();
+        if (interfaces != null) {
+            for (File iface : interfaces) {
+                String ifaceName = iface.getName();
+                if (!ifaceName.equals("lo")) {
+                    String macAddress = readMacAddress(ifaceName);
+                    if (macAddress != null) {
+                        return macAddress;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+    private static String readMacAddress(String interfaceName) {
+        String filePath = "/sys/class/net/" + interfaceName + "/address";
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            return br.readLine().trim();
+        } catch (IOException e) {
+            return null; 
+        }
+    }
 
   /**
    * Format IPv4 Address

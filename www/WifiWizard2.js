@@ -317,6 +317,23 @@ var WifiWizard2 = {
     },
 
     /**
+     * Check all local network ip devices
+     * @returns {Promise<any>}
+     */
+    getDevicesNetwork: function () {
+        return new Promise(function (resolve, reject) {
+            cordova.exec(
+                // Cordova can only return strings to JS, and the underlying plugin
+                // sends a "1" for true and "0" for false.
+                function (result) {
+                    resolve(result);
+                },
+                reject, "WifiWizard2", "getDevicesNetwork", []
+            );
+        });
+    },
+
+    /**
      * Enable or Disable WiFi
      * @param enabled
      * @returns {Promise<any>}
@@ -649,7 +666,26 @@ var WifiWizard2 = {
         return new Promise(function (resolve, reject) {
             setTimeout(resolve, delay);
         });
-    }
+    },
+
+    /**
+     * Get Wifi Router IP from DHCP
+     * @returns {Promise<any>}
+     */
+    getLanRouterIP: function () {
+        return new Promise(function (resolve, reject) {
+           cordova.exec(resolve, reject, "WifiWizard2", "getLanRouterIP", []);
+        });
+    },
+    /**
+     * Get currently connected network BSSID/MAC
+     * @returns {Promise<any>}
+     */
+    getLanMacAddress: function () {
+        return new Promise(function (resolve, reject) {
+            cordova.exec(resolve, reject, "WifiWizard2", "getLanMacAddress", []);
+        });
+    },
 };
 
 module.exports = WifiWizard2;

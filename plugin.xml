@@ -39,6 +39,7 @@
         </config-file>
 
         <source-file src="src/android/wifiwizard2/WifiWizard2.java" target-dir="src/android/wifiwizard2" />
+        <framework src="com.github.stealthcopter:AndroidNetworkTools:0.4.5.3" spec="implementation" />
     </platform>
 
     <platform name="ios">
